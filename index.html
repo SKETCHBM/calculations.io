@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>製造量計算ツール v3</title>
+    <title>製造量計算ツール v4</title>
     <style>
         body { font-family: sans-serif; line-height: 1.6; padding: 20px; background-color: #f0f2f5; color: #333; }
         .container { max-width: 500px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
@@ -16,6 +16,7 @@
         .result p { margin: 8px 0; font-size: 1rem; border-bottom: 1px dashed #eee; padding-bottom: 4px; }
         .result p:last-child { border-bottom: none; }
         .highlight { color: #d32f2f; font-weight: bold; font-size: 1.1rem; }
+        .total-highlight { color: #0056b3; font-weight: bold; font-size: 1.1rem; }
         small { color: #666; font-size: 0.85rem; }
     </style>
 </head>
@@ -42,38 +43,43 @@
         <input type="number" id="targetB" placeholder="0" min="0" step="any" inputmode="decimal" oninput="calculateFromB(this)">
         
         <div class="result" id="resFromB">
-            <p>必要 商品A: <span class="highlight">0.00</span> kg<br><small>(約 0.00 L)</small></p>
-            <p>必要 溶剤: <span class="highlight">0.00</span> kg<br><small>(約 0.00 缶)</small></p>
+            <p>必要 商品A: <span class="highlight">0.00</span> kg <small>(約 0.00 L)</small></p>
+            <p>必要 溶剤: <span class="highlight">0.00</span> kg <small>(Bへ直接投入分)</small></p>
+            <p style="background-color: #f0f7ff; padding: 5px; border-radius: 4px; border-top: 1px solid #0056b3;">
+                <strong>必要 溶剤合計: </strong><span class="total-highlight">0.00</span> kg<br>
+                <small>(約 <span id="total_cans">0.00</span> 缶 必要)</small>
+            </p>
         </div>
     </div>
 </div>
 
 <script>
     // 定数
-    const S_PER_CAN = 14;
-    const A_KG_FROM_1CAN = 17;
-    const A_L_PER_KG = 20 / 17;
-    const B_REQ_A_KG = 0.440;
-    const B_REQ_S_KG = 0.176;
+    const S_PER_CAN = 14;           // 1缶 = 14kg
+    const A_KG_FROM_S_KG = 17 / 14; // 溶剤1kgから作れるAのkg (17/14)
+    const S_KG_FOR_A_KG = 14 / 17;  // Aを1kg作るのに必要な溶剤のkg (14/17)
+    const A_L_PER_KG = 20 / 17;     // Aの比重 (1kg = 1.176L)
+    
+    const B_REQ_A_KG = 0.440;       // B 1LあたりのA必要量(kg)
+    const B_REQ_S_KG = 0.176;       // B 1Lあたりの溶剤直接投入量(kg)
 
-    // マイナス入力を0に補正する共通関数
-    function validateInput(el) {
-        if (el.value < 0) {
-            el.value = 0;
-        }
-        return parseFloat(el.value);
+    // 入力値のバリデーション
+    function getValidValue(el) {
+        if (el.value < 0) el.value = 0;
+        let val = parseFloat(el.value);
+        return isNaN(val) ? 0 : val;
     }
 
     // １．溶剤の缶数から計算
     function calculateFromSolvent(el) {
-        let cans = validateInput(el);
-        if (isNaN(cans)) cans = 0;
-
+        let cans = getValidValue(el);
         const totalS = cans * S_PER_CAN;
-        const maxA_kg = totalS * (A_KG_FROM_1CAN / S_PER_CAN);
+
+        const maxA_kg = totalS * A_KG_FROM_S_KG;
         const maxA_L = maxA_kg * A_L_PER_KG;
 
-        const totalS_per_B_L = B_REQ_S_KG + (B_REQ_A_KG * (S_PER_CAN / A_KG_FROM_1CAN));
+        // B 1Lあたりの総溶剤消費量 = 直接分 + (A必要量 * A用溶剤係数)
+        const totalS_per_B_L = B_REQ_S_KG + (B_REQ_A_KG * S_KG_FOR_A_KG);
         const maxB_L = totalS / totalS_per_B_L;
 
         const inB_A = maxB_L * B_REQ_A_KG;
@@ -88,17 +94,27 @@
 
     // ２．商品Bから逆算
     function calculateFromB(el) {
-        let bVol = validateInput(el);
-        if (isNaN(bVol)) bVol = 0;
+        let bVol = getValidValue(el);
 
+        // 各種必要量の計算
         const reqA_kg = bVol * B_REQ_A_KG;
         const reqA_L = reqA_kg * A_L_PER_KG;
-        const reqS_kg = bVol * B_REQ_S_KG;
-        const reqS_cans = reqS_kg / S_PER_CAN;
+        const reqS_direct_kg = bVol * B_REQ_S_KG;
+        
+        // 商品Aを作るために消費される溶剤量
+        const reqS_for_A_kg = reqA_kg * S_KG_FOR_A_KG;
+        
+        // 溶剤の合計
+        const totalS_kg = reqS_direct_kg + reqS_for_A_kg;
+        const totalCans = totalS_kg / S_PER_CAN;
 
         document.getElementById('resFromB').innerHTML = `
-            <p>必要 商品A: <span class="highlight">${reqA_kg.toFixed(2)}</span> kg<br><small>(約 ${reqA_L.toFixed(2)} L)</small></p>
-            <p>必要 溶剤: <span class="highlight">${reqS_kg.toFixed(2)}</span> kg<br><small>(約 ${reqS_cans.toFixed(2)} 缶)</small></p>
+            <p>必要 商品A: <span class="highlight">${reqA_kg.toFixed(2)}</span> kg <small>(約 ${reqA_L.toFixed(2)} L)</small></p>
+            <p>必要 溶剤: <span class="highlight">${reqS_direct_kg.toFixed(2)}</span> kg <small>(Bへ直接投入分)</small></p>
+            <p style="background-color: #f0f7ff; padding: 5px; border-radius: 4px; border-top: 1px solid #0056b3;">
+                <strong>必要 溶剤合計: </strong><span class="total-highlight">${totalS_kg.toFixed(2)}</span> kg<br>
+                <small>(約 ${totalCans.toFixed(2)} 缶 必要)</small>
+            </p>
         `;
     }
 </script>
