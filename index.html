@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>製造量計算ツール v2</title>
+    <style>
+        body { font-family: sans-serif; line-height: 1.6; padding: 20px; background-color: #f0f2f5; color: #333; }
+        .container { max-width: 500px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        h1 { font-size: 1.1rem; border-left: 4px solid #0056b3; padding-left: 10px; margin-bottom: 15px; color: #0056b3; }
+        .section { margin-bottom: 25px; padding: 15px; border: 1px solid #e1e4e8; border-radius: 8px; background-color: #fafbfc; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; font-size: 0.9rem; }
+        input[type="number"] { width: 100%; padding: 12px; margin-bottom: 10px; border: 2px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 1.1rem; }
+        input[type="number"]:focus { border-color: #0056b3; outline: none; }
+        .result { background: #fff; padding: 12px; border: 1px solid #d1d9e6; border-radius: 6px; margin-top: 10px; }
+        .result p { margin: 8px 0; font-size: 1rem; border-bottom: 1px dashed #eee; padding-bottom: 4px; }
+        .result p:last-child { border-bottom: none; }
+        .highlight { color: #d32f2f; font-weight: bold; font-size: 1.1rem; }
+        small { color: #666; font-size: 0.85rem; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 style="text-align:center; font-size: 1.3rem;">製造工程シミュレーター</h2>
+
+    <div class="section">
+        <h1>１．溶剤の在庫から計算</h1>
+        <label for="solventCans">溶剤在庫数 (缶：14kg/缶)</label>
+        <input type="number" id="solventCans" placeholder="例: 1" step="any" oninput="calculate()">
+        
+        <div class="result">
+            <p>商品A 最大製造量: <span id="maxA_L" class="highlight">-</span> L<br><small>(<span id="maxA_kg">-</span> kg)</small></p>
+            <p>商品B 最大製造量: <span id="maxB_L" class="highlight">-</span> L</p>
+            <p><small>内訳: A <span id="inB_A_kg">-</span> kg / 溶剤 <span id="inB_S_kg">-</span> kg</small></p>
+        </div>
+    </div>
+
+    <div class="section">
+        <h1>２．商品Bから逆算（小数点2桁表示）</h1>
+        <label for="targetB">商品B 製造予定量 (L)</label>
+        <input type="number" id="targetB" placeholder="例: 100" step="any" oninput="calculate()">
+        
+        <div class="result">
+            <p>必要 商品A: <span id="reqA_kg" class="highlight">-</span> kg<br><small>(約 <span id="reqA_L">-</span> L)</small></p>
+            <p>必要 溶剤: <span id="reqS_kg" class="highlight">-</span> kg<br><small>(約 <span id="reqS_cans">-</span> 缶)</small></p>
+        </div>
+    </div>
+</div>
+
+<script>
+    function calculate() {
+        // 定数設定
+        const S_PER_CAN = 14;      // 溶剤1缶 = 14kg
+        const A_KG_FROM_1CAN = 17; // 1缶(14kg)からAは17kgできる
+        const A_L_PER_KG = 20 / 17; // Aの比重換算 (17kg=20L)
+
+        // 商品B 1Lあたりの配合重量
+        const B_REQ_A_KG = 0.440;  // 440g
+        const B_REQ_S_KG = 0.176;  // 176g
+
+        // --- １．溶剤缶数からの計算 ---
+        const cans = parseFloat(document.getElementById('solventCans').value);
+        if (!isNaN(cans) && cans > 0) {
+            const totalS = cans * S_PER_CAN;
+            
+            // Aの最大
+            const maxA_kg = totalS * (A_KG_FROM_1CAN / S_PER_CAN);
+            const maxA_L = maxA_kg * A_L_PER_KG;
+
+            // Bの最大 (B 1Lを作るのに必要な「総溶剤量」を算出)
+            // B 1Lに含まれる直接の溶剤(0.176) + A 0.44kgを作るのに使った溶剤(0.44 * 14/17)
+            const totalS_per_B_L = B_REQ_S_KG + (B_REQ_A_KG * (S_PER_CAN / A_KG_FROM_1CAN));
+            const maxB_L = totalS / totalS_per_B_L;
+
+            document.getElementById('maxA_L').innerText = maxA_L.toFixed(2);
+            document.getElementById('maxA_kg').innerText = maxA_kg.toFixed(2);
+            document.getElementById('maxB_L').innerText = maxB_L.toFixed(2);
+            document.getElementById('inB_A_kg').innerText = (maxB_L * B_REQ_A_KG).toFixed(2);
+            document.getElementById('inB_S_kg').innerText = (maxB_L * B_REQ_S_KG).toFixed(2);
+        }
+
+        // --- ２．商品Bからの逆算 ---
+        const bVol = parseFloat(document.getElementById('targetB').value);
+        if (!isNaN(bVol) && bVol > 0) {
+            const reqA_kg = bVol * B_REQ_A_KG;
+            const reqA_L = reqA_kg * A_L_PER_KG;
+            const reqS_kg = bVol * B_REQ_S_KG;
+            const reqS_cans = reqS_kg / S_PER_CAN;
+
+            document.getElementById('reqA_kg').innerText = reqA_kg.toFixed(2);
+            document.getElementById('reqA_L').innerText = reqA_L.toFixed(2);
+            document.getElementById('reqS_kg').innerText = reqS_kg.toFixed(2);
+            document.getElementById('reqS_cans').innerText = reqS_cans.toFixed(2);
+        }
+    }
+</script>
+
+</body>
+</html>
